@@ -1,76 +1,51 @@
 module Parser (tokenize, indexChars, Indexed (..)) where 
 
 import Control.Applicative
+import Data.Monoid
 
-data Index = Index { row::Int, col::Int }
-    deriving Show
+newtype Indexed a = Indexed (a, Int, Int) deriving Show
 
-instance Eq Index where
-    Index {row = a, col = b} == Index {row = c, col = d} = a == c && b == d
-
-instance Ord Index where
-    Index {row = a, col = b} `compare` Index {row = c, col = d}
-        | a > c = GT
-        | a < c = LT
-        | b > d = GT
-        | b < d = LT
-        | otherwise = EQ
-
-newtype Indexed a = Indexed (a, Index)
-    deriving Show
+instance Monoid m => Monoid (Indexed m) where
+    mempty = Indexed (mempty, 0, 0)
+    mappend (Indexed (a, r, c)) (Indexed (b, _, _)) = Indexed (mappend a b, r, c)
 
 instance Functor Indexed where
-    fmap f (Indexed (a, i)) = Indexed (f a, i)
+    fmap f (Indexed (a,r,c)) = Indexed (f a, r, c)
 
-type Symbol = Indexed Char
-type Token = Indexed String
+--Split && index chars
+indexChars :: String -> [Indexed Char]
+indexChars c = rindexChars c 1 1
 
-addSymb :: Symbol -> Token -> Token
-addSymb (Indexed (c, _)) t = fmap (strv++) t
-    where strv = pure c
+rindexChars :: String -> Int ->  Int -> [Indexed Char]
+rindexChars [] _ _ = []
+rindexChars (c:cs) r col
+    | c == '\n' = Indexed (c, r, col) : rindexChars cs (r + 1) 1
+    | otherwise = Indexed (c, r, col) : rindexChars cs r (col + 1)
 
-ind = Index {row=0, col=0}
+
+--split indexed chars into list of indexed strings
 exDelims = " \t\n"
 inDelims = "()"
 
-has :: Eq a => [a] -> a -> Bool
-has l elm = foldr (||) False $ map (==elm) l
-
-baseToken :: Symbol -> Token
-baseToken (Indexed (c,i)) = Indexed ([c],i)
-
-chunkWith :: ([a] -> ([a],[a])) -> [a] -> [[a]]
+chunkWith :: ([a] -> ([b],[a])) -> [a] -> [[b]]
 chunkWith _ [] = []
 chunkWith f xs = let (h,t) = f xs
                     in h : chunkWith f t
 
-symChunker :: [Symbol] -> ([Symbol],[Symbol])
+symChunker :: [Indexed Char] -> ([Indexed String],[Indexed Char])
 symChunker [] = ([],[])
-symChunker a@(s@(Indexed (c, i)):ss)
-    | has inDelims c = ([s],ss)
+symChunker a@(s@(Indexed (ch,r,c)):ss)
+    | ch `elem` inDelims = ([Indexed (ch:"",r,c)],ss)
     | otherwise = rsymChunker a
 
-rsymChunker :: [Symbol] -> ([Symbol],[Symbol])
+rsymChunker :: [Indexed Char] -> ([Indexed String],[Indexed Char])
 rsymChunker [] = ([],[])
-rsymChunker (s@(Indexed (c, i)):ss)
-    | has exDelims c = ([],ss)
-    | has inDelims c = ([],s:ss)
-    | otherwise = let (syms, rest) = rsymChunker ss
-                    in (s:syms, rest)
+rsymChunker (ic@(Indexed (ch, r, c)):ics)
+    | ch `elem` exDelims = ([],ics)
+    | ch `elem` inDelims = ([],ic:ics)
+    | otherwise = let (syms, rest) = rsymChunker ics
+                    in (Indexed (ch:"",r,c):syms, rest)
 
-chunkSyms = chunkWith symChunker
-tokenize :: [Symbol] -> [Token]
-tokenize syms = map toTokens chnkdSyms
-    where chnkdSyms = chunkSyms syms
-          toTokens = foldr addSymb (newInd "" 0 0 :: Token)
-
-newInd a r c = Indexed (a, Index {row = r, col = c})
-
-indexChars :: [Char] -> [Symbol]
-indexChars c = rindexChars c 0 0
-
-rindexChars :: [Char] -> Int ->  Int -> [Symbol]
-rindexChars [] _ _ = []
-rindexChars (c:cs) r col
-    | c == '\n' = newInd c r col : (rindexChars cs (r + 1) 0)
-    | otherwise = newInd c r col : (rindexChars cs r (col + 1))
+tokenize :: String -> [Indexed String]
+tokenize str = map mconcat chnkdSyms
+    where chnkdSyms = chunkWith symChunker $ indexChars str
