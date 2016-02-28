@@ -1,3 +1,5 @@
+module Parser (tokenize, indexChars, Indexed (..)) where 
+
 import Control.Applicative
 
 data Index = Index { row::Int, col::Int }
@@ -72,7 +74,3 @@ rindexChars [] _ _ = []
 rindexChars (c:cs) r col
     | c == '\n' = newInd c r col : (rindexChars cs (r + 1) 0)
     | otherwise = newInd c r col : (rindexChars cs r (col + 1))
-
-main = fmap (show . filt . tokenize . indexChars) fstring >>= putStrLn
-        where fstring = readFile "test"
-              filt = filter (\(Indexed (s, _)) -> s /= [])
