@@ -1,5 +1,4 @@
 import Parser
 
-main = fmap (show . filt . tokenize) fstring >>= putStrLn
+main = fmap (show . lexify) fstring >>= putStrLn
         where fstring = readFile "../test"
-              filt = filter (\(Indexed (s, _, _)) -> s /= [])

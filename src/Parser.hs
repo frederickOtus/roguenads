@@ -1,9 +1,14 @@
-module Parser (tokenize, indexChars, Indexed (..)) where 
+module Parser (lexify, tokenize, indexChars, Indexed (..)) where 
 
 import Control.Applicative
 import Data.Monoid
 
-newtype Indexed a = Indexed (a, Int, Int) deriving Show
+--the types we have 
+newtype Indexed a = Indexed (a, Int, Int)
+
+instance (Show a) => Show (Indexed a) where
+    show (Indexed (elm, r, c)) = show elm ++ " : " ++ instr
+        where instr = "(" ++ show r ++ "," ++ show c ++ ")"
 
 instance Monoid m => Monoid (Indexed m) where
     mempty = Indexed (mempty, 0, 0)
@@ -11,6 +16,12 @@ instance Monoid m => Monoid (Indexed m) where
 
 instance Functor Indexed where
     fmap f (Indexed (a,r,c)) = Indexed (f a, r, c)
+
+type Token = Indexed String
+type Lexeme = Indexed TypedToken
+
+data TypedToken = LP | RP | Ident String | TInt Int | TBool Bool
+    deriving Show
 
 --Split && index chars
 indexChars :: String -> [Indexed Char]
@@ -23,7 +34,7 @@ rindexChars (c:cs) r col
     | otherwise = Indexed (c, r, col) : rindexChars cs r (col + 1)
 
 
---split indexed chars into list of indexed strings
+--split indexed chars into list of indexed tokens
 exDelims = " \t\n"
 inDelims = "()"
 
@@ -46,6 +57,39 @@ rsymChunker (ic@(Indexed (ch, r, c)):ics)
     | otherwise = let (syms, rest) = rsymChunker ics
                     in (Indexed (ch:"",r,c):syms, rest)
 
-tokenize :: String -> [Indexed String]
+tokenize :: String -> [Token]
 tokenize str = map mconcat chnkdSyms
     where chnkdSyms = chunkWith symChunker $ indexChars str
+
+--generate lexemes from the tokens
+
+isInt = all isDig
+    where isDig = flip elem ['0' .. '9']
+
+identType :: String -> TypedToken
+identType "#t" = TBool True
+identType "#f" = TBool False
+identType "(" = LP
+identType ")" = RP
+identType s
+    | isInt s = TInt (read s)
+    | otherwise = Ident s
+
+toke2Lex :: Token -> Lexeme
+toke2Lex (Indexed (s, r, c)) = Indexed (identType s, r, c)
+
+lexify :: String -> [Lexeme]
+lexify = map toke2Lex . filt . tokenize
+    where filt = filter (\(Indexed (s, _, _)) -> s /= "")
+
+--build ASTs
+
+data SExpr = SList [SExpr] | SIdent String | SBool Bool | SInt Int
+    deriving Show
+--data TypedTokens = LP | RP | Ident String | TInt Int | TBool Bool
+--type Lexeme = Indexed TypedToken
+
+--nextExpr :: [Lexeme] -> (SExpr, [Lexeme])
+--nextExpr (Indexed (Ident s,r,c):ls) = (SIdent s, ls)
+--nextExpr (Indexed (TInt i,r,c):ls) = (SInt s, ls)
+--nextExpr (Indexed (Ident s,r,c):ls) = (SIdent s, ls)
